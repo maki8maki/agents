@@ -51,7 +51,9 @@ class ConvVAE(FE):
         )
 
         with th.no_grad():
+            self.eval()
             n_flatten = self.encoder(th.zeros((1, img_channel, img_height, img_width), dtype=th.float)).numel()
+            self.train()
 
         self.enc_mean = nn.Linear(n_flatten, hidden_dim)
         self.enc_var = nn.Linear(n_flatten, hidden_dim)
