@@ -7,6 +7,8 @@ import torch.optim as optim
 
 from .utils import FE, SSIMLoss
 
+# 以下はhttps://github.com/sksq96/pytorch-vaeを利用
+
 
 class Flatten(nn.Module):
     def forward(self, input: th.Tensor):
