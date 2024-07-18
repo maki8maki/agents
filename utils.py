@@ -49,15 +49,6 @@ def torch_log(x: th.Tensor) -> th.Tensor:
     return th.log(th.clamp(x, min=1e-10))
 
 
-class Reshape(nn.Module):
-    def __init__(self, shape):
-        super(Reshape, self).__init__()
-        self.shape = shape
-
-    def forward(self, x: th.Tensor):
-        return x.reshape(self.shape)
-
-
 class SSIMLoss(nn.Module):
     """Copy from https://zenn.dev/taikiinoue45/articles/bf7d2314ab4d10"""
 

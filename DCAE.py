@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from agents.utils import FE, Reshape, size_after_conv, size_after_pooling
+from .utils import FE, size_after_conv, size_after_pooling
 
 
 class DCAE(FE):
@@ -44,7 +44,7 @@ class DCAE(FE):
             nn.Conv2d(in_channels=channels[3], out_channels=channels[4], kernel_size=ksize),
             net_activation,
             nn.MaxPool2d(pooling_size),
-            Reshape((-1, features[0])),
+            nn.Flatten(),
             nn.Linear(in_features=features[0], out_features=features[1]),
             # nn.BatchNorm1d(num_features=features[1]),
             net_activation,
@@ -64,7 +64,7 @@ class DCAE(FE):
             nn.Linear(in_features=features[1], out_features=features[0]),
             # nn.BatchNorm1d(num_features=features[0]),
             net_activation,
-            Reshape((-1, channels[-1], after_height, after_width)),
+            nn.Unflatten(1, (channels[-1], after_height, after_width)),
             nn.ConvTranspose2d(in_channels=channels[4], out_channels=channels[3], kernel_size=ksize),
             net_activation,
             nn.Upsample(scale_factor=pooling_size),
