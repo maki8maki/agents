@@ -1,6 +1,6 @@
 import dataclasses
 import random
-from typing import Tuple, Union
+from typing import Any, Tuple, Union
 
 import cv2
 import numpy as np
@@ -201,11 +201,16 @@ class Transition:
     action: np.ndarray
     terminated: dataclasses.InitVar[bool]
     truncated: dataclasses.InitVar[bool]
+    info: dataclasses.InitVar[dict]
     success: bool = dataclasses.field(init=False)
     done: int = dataclasses.field(init=False)
 
-    def __post_init__(self, terminated, truncated):
-        self.success = terminated
+    def __post_init__(self, terminated: bool, truncated: bool, info: dict[str, Any]):
+        success_key = "is_success"
+        if success_key in info.keys():
+            self.success = info[success_key]
+        else:
+            self.success = terminated
         self.done = int(terminated or truncated)
 
 
