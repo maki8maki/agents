@@ -10,24 +10,6 @@ from .utils import FE, SSIMLoss
 # 以下はhttps://github.com/sksq96/pytorch-vaeを利用
 
 
-class Flatten(nn.Module):
-    def forward(self, input: th.Tensor):
-        if input.ndim < 4:
-            batch_size = 1
-        else:
-            batch_size = input.size(0)
-        return input.view(batch_size, -1)
-
-
-class UnFlatten(nn.Module):
-    def __init__(self, size: int):
-        super().__init__()
-        self.size = size
-
-    def forward(self, input: th.Tensor):
-        return input.view(-1, self.size, 1, 1)
-
-
 class ConvVAE(FE):
     def __init__(
         self,
@@ -49,7 +31,7 @@ class ConvVAE(FE):
             nn.ReLU(),
             nn.Conv2d(128, 256, kernel_size=4, stride=2),
             nn.ReLU(),
-            Flatten(),
+            nn.Flatten(),
         )
 
         with th.no_grad():
@@ -62,7 +44,7 @@ class ConvVAE(FE):
 
         self.decoder = nn.Sequential(
             nn.Linear(hidden_dim, n_flatten),
-            UnFlatten(size=n_flatten),
+            nn.Unflatten(1, (n_flatten, 1, 1)),
             nn.ConvTranspose2d(n_flatten, 128, kernel_size=5, stride=2),
             nn.ReLU(),
             nn.ConvTranspose2d(128, 64, kernel_size=5, stride=2),
