@@ -1,4 +1,4 @@
-from typing import Callable, Tuple, Union
+from typing import Callable
 
 import torch as th
 import torch.nn as nn
@@ -60,7 +60,7 @@ class ConvVAE(FE):
 
         self.re_loss = SSIMLoss(channel=img_channel)
 
-    def _encode(self, input: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
+    def _encode(self, input: th.Tensor) -> tuple[th.Tensor, th.Tensor]:
         tmp = self.encoder(input)
         mu = self.enc_mean(tmp)
         log_var = self.enc_var(tmp)
@@ -77,12 +77,12 @@ class ConvVAE(FE):
         else:
             return mu
 
-    def _bottleneck(self, x: th.Tensor) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
+    def _bottleneck(self, x: th.Tensor) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
         mu, log_var = self._encode(x)
         z = self._reparameterize(mu, log_var)
         return mu, log_var, z
 
-    def forward(self, x: th.Tensor, return_pred: bool = False) -> Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]:
+    def forward(self, x: th.Tensor, return_pred: bool = False) -> th.Tensor | tuple[th.Tensor, th.Tensor]:
         _, _, z = self._bottleneck(x)
         if return_pred:
             y = self._decode(z)
@@ -210,111 +210,6 @@ class ResBlock(nn.Module):
         return x + skip
 
 
-class Encoder(nn.Module):
-    """
-    Encoder block
-    """
-
-    def __init__(
-        self,
-        channels,
-        ch=64,
-        blocks=(1, 2, 4, 8),
-        latent_channels=256,
-        num_res_blocks=1,
-        norm_type="bn",
-        deep_model=False,
-    ):
-        super(Encoder, self).__init__()
-        self.conv_in = nn.Conv2d(channels, blocks[0] * ch, 3, 1, 1)
-
-        widths_in = list(blocks)
-        widths_out = list(blocks[1:]) + [2 * blocks[-1]]
-
-        self.layer_blocks = nn.ModuleList([])
-        for w_in, w_out in zip(widths_in, widths_out):
-
-            if deep_model:
-                # Add an additional non down-sampling block before down-sampling
-                self.layer_blocks.append(ResBlock(w_in * ch, w_in * ch, norm_type=norm_type))
-
-            self.layer_blocks.append(ResDown(w_in * ch, w_out * ch, norm_type=norm_type))
-
-        for _ in range(num_res_blocks):
-            self.layer_blocks.append(ResBlock(widths_out[-1] * ch, widths_out[-1] * ch, norm_type=norm_type))
-
-        self.conv_mu = nn.Conv2d(widths_out[-1] * ch, latent_channels, 1, 1)
-        self.conv_log_var = nn.Conv2d(widths_out[-1] * ch, latent_channels, 1, 1)
-        self.act_fnc = nn.ELU()
-
-    def sample(self, mu, log_var):
-        std = th.exp(0.5 * log_var)
-        eps = th.randn_like(std)
-        return mu + eps * std
-
-    def forward(self, x, sample=False):
-        x = self.conv_in(x)
-
-        for block in self.layer_blocks:
-            x = block(x)
-        x = self.act_fnc(x)
-
-        mu = self.conv_mu(x)
-        log_var = self.conv_log_var(x)
-
-        if self.training or sample:
-            x = self.sample(mu, log_var)
-        else:
-            x = mu
-
-        return x, mu, log_var
-
-
-class Decoder(nn.Module):
-    """
-    Decoder block
-    Built to be a mirror of the encoder block
-    """
-
-    def __init__(
-        self,
-        channels,
-        ch=64,
-        blocks=(1, 2, 4, 8),
-        latent_channels=256,
-        num_res_blocks=1,
-        norm_type="bn",
-        deep_model=False,
-    ):
-        super(Decoder, self).__init__()
-        widths_out = list(blocks)[::-1]
-        widths_in = (list(blocks[1:]) + [2 * blocks[-1]])[::-1]
-
-        self.conv_in = nn.Conv2d(latent_channels, widths_in[0] * ch, 1, 1)
-
-        self.layer_blocks = nn.ModuleList([])
-        for _ in range(num_res_blocks):
-            self.layer_blocks.append(ResBlock(widths_in[0] * ch, widths_in[0] * ch, norm_type=norm_type))
-
-        for w_in, w_out in zip(widths_in, widths_out):
-            self.layer_blocks.append(ResUp(w_in * ch, w_out * ch, norm_type=norm_type))
-            if deep_model:
-                # Add an additional non up-sampling block after up-sampling
-                self.layer_blocks.append(ResBlock(w_out * ch, w_out * ch, norm_type=norm_type))
-
-        self.conv_out = nn.Conv2d(blocks[0] * ch, channels, 5, 1, 2)
-        self.act_fnc = nn.ELU()
-
-    def forward(self, x):
-        x = self.conv_in(x)
-
-        for block in self.layer_blocks:
-            x = block(x)
-        x = self.act_fnc(x)
-
-        return th.tanh(self.conv_out(x))
-
-
 class ResVAE(FE):
     """
     VAE network, uses the above encoder and decoder blocks
@@ -326,10 +221,12 @@ class ResVAE(FE):
         ch=64,
         blocks=(1, 2, 4, 8),
         latent_channels=256,
+        hidden_dim=20,
         num_res_blocks=1,
         norm_type="bn",
         deep_model=False,
         lr=1e-4,
+        activation=nn.ELU(),
         hidden_activation: Callable[[th.Tensor], th.Tensor] = F.tanh,
     ):
         super(ResVAE, self).__init__()
@@ -339,32 +236,103 @@ class ResVAE(FE):
         (for a 64x64 image this is the size of the latent vector)
         """
 
-        self.encoder = Encoder(
-            img_channel,
-            ch=ch,
-            blocks=blocks,
-            latent_channels=latent_channels,
-            num_res_blocks=num_res_blocks,
-            norm_type=norm_type,
-            deep_model=deep_model,
+        # build encoder
+        widths_in = list(blocks)
+        widths_out = list(blocks[1:]) + [2 * blocks[-1]]
+
+        modules = [nn.Conv2d(img_channel, blocks[0] * ch, 3, 1, 1)]
+
+        for w_in, w_out in zip(widths_in, widths_out):
+
+            if deep_model:
+                # Add an additional non down-sampling block before down-sampling
+                modules.append(ResBlock(w_in * ch, w_in * ch, norm_type=norm_type))
+
+            modules.append(ResDown(w_in * ch, w_out * ch, norm_type=norm_type))
+
+        for _ in range(num_res_blocks):
+            modules.append(ResBlock(widths_out[-1] * ch, widths_out[-1] * ch, norm_type=norm_type))
+
+        modules.append(activation)
+
+        self.encoder = nn.Sequential(*modules)
+
+        conv_params = {
+            "in_channels": widths_out[-1] * ch,
+            "out_channels": latent_channels,
+            "kernel_size": 1,
+            "stride": 1,
+        }
+
+        with th.no_grad():
+            self.eval()
+            image = th.zeros((1, img_channel, ch, ch), dtype=th.float)
+            tmp_conv = nn.Conv2d(**conv_params)
+            output: th.Tensor = tmp_conv(self.encoder(image))
+            self.train()
+
+        self.enc_mean = nn.Sequential(
+            nn.Conv2d(**conv_params),
+            activation,
+            nn.Flatten(),
+            nn.Linear(output.numel(), hidden_dim),
         )
-        self.decoder = Decoder(
-            img_channel,
-            ch=ch,
-            blocks=blocks,
-            latent_channels=latent_channels,
-            num_res_blocks=num_res_blocks,
-            norm_type=norm_type,
-            deep_model=deep_model,
+
+        self.enc_log_var = nn.Sequential(
+            nn.Conv2d(**conv_params),
+            activation,
+            nn.Flatten(),
+            nn.Linear(output.numel(), hidden_dim),
         )
+
+        # build decoder
+        widths_in, widths_out = widths_out[::-1], widths_in[::-1]
+
+        modules = [
+            nn.Linear(hidden_dim, output.numel()),
+            nn.Unflatten(1, output.shape[1:]),
+            nn.Conv2d(latent_channels, widths_in[0] * ch, 1, 1),
+        ]
+
+        for _ in range(num_res_blocks):
+            modules.append(ResBlock(widths_in[0] * ch, widths_in[0] * ch, norm_type=norm_type))
+
+        for w_in, w_out in zip(widths_in, widths_out):
+            modules.append(ResUp(w_in * ch, w_out * ch, norm_type=norm_type))
+            if deep_model:
+                # Add an additional non up-sampling block after up-sampling
+                modules.append(ResBlock(w_out * ch, w_out * ch, norm_type=norm_type))
+
+        modules += [
+            activation,
+            nn.Conv2d(blocks[0] * ch, img_channel, 5, 1, 2),
+            nn.Sigmoid(),
+        ]
+
+        self.decoder = nn.Sequential(*modules)
 
         self.hidden_activation = hidden_activation
         self.optim = optim.Adam(self.parameters(), lr=lr)
 
         self.re_loss = SSIMLoss(channel=img_channel)
 
-    def forward(self, x: th.Tensor, return_pred: bool = False) -> Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]:
-        z, _, _ = self.encoder(x)
+    def _sample(self, mu: th.Tensor, log_var: th.Tensor) -> th.Tensor:
+        if self.training:
+            std = th.exp(0.5 * log_var)
+            eps = th.randn_like(std)
+            return mu + eps * std
+        else:
+            return mu
+
+    def _encode(self, x: th.Tensor) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
+        x = self.encoder(x)
+        mu = self.enc_mean(x)
+        log_var = self.enc_log_var(x)
+        z = self._sample(mu, log_var)
+        return mu, log_var, z
+
+    def forward(self, x: th.Tensor, return_pred: bool = False) -> th.Tensor | tuple[th.Tensor, th.Tensor]:
+        _, _, z = self._encode(x)
         if return_pred:
             y = self.decoder(z)
             return z, y
@@ -372,7 +340,7 @@ class ResVAE(FE):
             return z
 
     def loss(self, x: th.Tensor) -> th.Tensor:
-        z, mu, log_var = self.encoder(x)
+        mu, log_var, z = self._encode(x)
         kl = -0.5 * (1 + log_var - mu.pow(2) - log_var.exp_()).mean()
         y = self.decoder(z)
         re = self.re_loss(y, x)
