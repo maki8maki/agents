@@ -109,9 +109,11 @@ class SSIMLoss(nn.Module):
 
 
 class RL:
+    info: dict = {}
+    device: str = "cpu"
+
     def __init__(self):
-        self.info = {}
-        self.device = "cpu"
+        pass
 
     def batch_to_tensor(self, batch, key_list=["states", "actions", "next_states", "rewards", "dones"]):
         return_list = {}
@@ -175,6 +177,7 @@ class RL:
 
 class FE(nn.Module):
     optim: th.optim.Optimizer
+    hidden_dim: int
 
     def __init__(self):
         super().__init__()

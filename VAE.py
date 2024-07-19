@@ -60,6 +60,8 @@ class ConvVAE(FE):
 
         self.re_loss = SSIMLoss(channel=img_channel)
 
+        self.hidden_dim = hidden_dim
+
     def _encode(self, input: th.Tensor) -> tuple[th.Tensor, th.Tensor]:
         tmp = self.encoder(input)
         mu = self.enc_mean(tmp)
@@ -315,6 +317,8 @@ class ResVAE(FE):
         self.optim = optim.Adam(self.parameters(), lr=lr)
 
         self.re_loss = SSIMLoss(channel=img_channel)
+
+        self.hidden_dim = hidden_dim
 
     def _sample(self, mu: th.Tensor, log_var: th.Tensor) -> th.Tensor:
         if self.training:

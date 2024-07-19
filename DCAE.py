@@ -83,6 +83,8 @@ class DCAE(FE):
         self.optim = optim.Adam(self.parameters(), lr=lr)
         self.loss_func = loss_func
 
+        self.hidden_dim = hidden_dim
+
     def forward(self, x: th.Tensor, return_pred: bool = False):
         h = self.encoder(x)
         if not return_pred:
