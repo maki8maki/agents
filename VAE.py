@@ -7,7 +7,7 @@ import torch.optim as optim
 
 from .utils import FE, SSIMLoss
 
-# 以下はhttps://github.com/sksq96/pytorch-vaeを利用
+# 以下は https://github.com/sksq96/pytorch-vae を利用
 
 
 class ConvVAE(FE):
@@ -100,7 +100,7 @@ class ConvVAE(FE):
         return kl + re
 
 
-# 以下はhttps://github.com/LukeDitria/CNN-VAEを利用
+# 以下は https://github.com/LukeDitria/CNN-VAE を利用
 
 
 def get_norm_layer(channels, norm_type="bn"):
