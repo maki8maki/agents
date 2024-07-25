@@ -1,2 +1,5 @@
 # for imported python file
 *.pyc
+
+# for test while editing
+test.py
