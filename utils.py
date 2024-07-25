@@ -1,6 +1,6 @@
 import dataclasses
 import random
-from typing import Any, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 import cv2
 import numpy as np
@@ -208,7 +208,7 @@ class Transition:
     success: bool = dataclasses.field(init=False)
     done: int = dataclasses.field(init=False)
 
-    def __post_init__(self, terminated: bool, truncated: bool, info: dict[str, Any]):
+    def __post_init__(self, terminated: bool, truncated: bool, info: Dict[str, Any]):
         success_key = "is_success"
         if success_key in info.keys():
             self.success = info[success_key]

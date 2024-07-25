@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Tuple
 
 import torch as th
 import torch.nn as nn
@@ -62,7 +62,7 @@ class ConvVAE(FE):
 
         self.hidden_dim = hidden_dim
 
-    def _encode(self, input: th.Tensor) -> tuple[th.Tensor, th.Tensor]:
+    def _encode(self, input: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
         tmp = self.encoder(input)
         mu = self.enc_mean(tmp)
         log_var = self.enc_var(tmp)
@@ -79,12 +79,12 @@ class ConvVAE(FE):
         else:
             return mu
 
-    def _bottleneck(self, x: th.Tensor) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
+    def _bottleneck(self, x: th.Tensor) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         mu, log_var = self._encode(x)
         z = self._reparameterize(mu, log_var)
         return mu, log_var, z
 
-    def forward(self, x: th.Tensor, return_pred: bool = False) -> th.Tensor | tuple[th.Tensor, th.Tensor]:
+    def forward(self, x: th.Tensor, return_pred: bool = False) -> th.Tensor | Tuple[th.Tensor, th.Tensor]:
         _, _, z = self._bottleneck(x)
         if return_pred:
             y = self._decode(z)
@@ -328,14 +328,14 @@ class ResVAE(FE):
         else:
             return mu
 
-    def _encode(self, x: th.Tensor) -> tuple[th.Tensor, th.Tensor, th.Tensor]:
+    def _encode(self, x: th.Tensor) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
         x = self.encoder(x)
         mu = self.enc_mean(x)
         log_var = self.enc_log_var(x)
         z = self._sample(mu, log_var)
         return mu, log_var, z
 
-    def forward(self, x: th.Tensor, return_pred: bool = False) -> th.Tensor | tuple[th.Tensor, th.Tensor]:
+    def forward(self, x: th.Tensor, return_pred: bool = False) -> th.Tensor | Tuple[th.Tensor, th.Tensor]:
         _, _, z = self._encode(x)
         if return_pred:
             y = self.decoder(z)
