@@ -58,7 +58,7 @@ class ConvVAE(FE):
         self.hidden_activation = hidden_activation
         self.optim = optim.Adam(self.parameters(), lr=lr)
 
-        self.re_loss = SSIMLoss(channel=img_channel)
+        self.re_loss = F.mse_loss
 
         self.hidden_dim = hidden_dim
 
