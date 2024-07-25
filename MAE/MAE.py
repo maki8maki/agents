@@ -10,48 +10,13 @@ from timm.models.layers import trunc_normal_
 from timm.models.vision_transformer import Block
 from torch import nn
 
+from ..utils import FE
 from .utils import get_2d_sincos_pos_embed
 
 # 以下は https://github.com/younggyoseo/MWM の Masked Auto Encoder部分をPyTorchに変換したもの
 
 
-class Base(nn.Module):
-    patch_size: int
-
-    def __init__(self):
-        super().__init__()
-
-    def patchify(self, imgs: th.Tensor) -> th.Tensor:
-        """
-        imgs: [N, C, H, W]
-        x: [N, L, patch_size**2 * C]
-        """
-        p = self.patch_size
-        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
-
-        unfolder = nn.Unfold(kernel_size=p, stride=p, padding=0)
-        x = unfolder.forward(imgs).permute([0, 2, 1])
-
-        return x
-
-    def unpatchify(self, x: th.Tensor) -> th.Tensor:
-        """
-        x: [N, L, patch_size**2 * C]
-        imgs: [N, C, H, W]
-        """
-        x = x.permute([0, 2, 1])
-        p = self.patch_size
-        c = x.shape[1] // (p**2)
-        h = w = int(x.shape[2] ** 0.5)
-        assert h * w == x.shape[2]
-
-        x = x.reshape([-1, c, p, p, h, w])
-        x = th.einsum("ncpqhw->nchpwq", x)
-        imgs = x.reshape([-1, c, h * p, w * p])
-        return imgs
-
-
-class Encoder(Base):
+class Encoder(nn.Module):
     def __init__(
         self,
         img_size: int,
@@ -159,7 +124,7 @@ class Encoder(Base):
         return x, mask, ids_restore
 
 
-class Decoder(Base):
+class Decoder(nn.Module):
     def __init__(
         self,
         img_size: int,
@@ -226,7 +191,7 @@ class Decoder(Base):
         return x
 
 
-class MAE(nn.Module):
+class MAE(FE):
     def __init__(
         self,
         img_size: int,
@@ -245,6 +210,7 @@ class MAE(nn.Module):
         self.encoder = Encoder(img_size=img_size, img_channel=img_channel, patch_size=patch_size, **enc_kwargs)
         self.decoder = Decoder(img_size=img_size, img_channel=img_channel, patch_size=patch_size, **dec_kwargs)
 
+        self.patch_size = patch_size
         self.mask_ratio = mask_ratio
         self.norm_pix_loss = norm_pix_loss
         self.masked_loss = masked_loss
@@ -256,7 +222,7 @@ class MAE(nn.Module):
         z, _, ids_restore = self.encoder.forward(x, self.mask_ratio, 1)
         if return_pred:
             y = self.decoder.forward(z, ids_restore)
-            return z, y
+            return z, self.unpatchify(y)
         else:
             return self.hidden_activation(z)
 
@@ -264,7 +230,7 @@ class MAE(nn.Module):
         z, mask, ids_restore = self.encoder.forward(x, self.mask_ratio, 1)
         y = self.decoder.forward(z, ids_restore)  # [N, L, p^2*C]
 
-        target = self.encoder.patchify(x)
+        target = self.patchify(x)
 
         if self.norm_pix_loss:
             var, mean = th.var_mean(target, dim=-1, keepdim=True)
@@ -279,3 +245,32 @@ class MAE(nn.Module):
             loss = loss.mean()
 
         return loss
+
+    def patchify(self, imgs: th.Tensor) -> th.Tensor:
+        """
+        imgs: [N, C, H, W]
+        x: [N, L, patch_size**2 * C]
+        """
+        p = self.patch_size
+        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
+
+        unfolder = nn.Unfold(kernel_size=p, stride=p, padding=0)
+        x = unfolder.forward(imgs).permute([0, 2, 1])
+
+        return x
+
+    def unpatchify(self, x: th.Tensor) -> th.Tensor:
+        """
+        x: [N, L, patch_size**2 * C]
+        imgs: [N, C, H, W]
+        """
+        x = x.permute([0, 2, 1])
+        p = self.patch_size
+        c = x.shape[1] // (p**2)
+        h = w = int(x.shape[2] ** 0.5)
+        assert h * w == x.shape[2]
+
+        x = x.reshape([-1, c, p, p, h, w])
+        x = th.einsum("ncpqhw->nchpwq", x)
+        imgs = x.reshape([-1, c, h * p, w * p])
+        return imgs
