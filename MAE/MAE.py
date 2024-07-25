@@ -1,6 +1,9 @@
 from math import log2
+from typing import Callable, Tuple
 
 import torch as th
+import torch.nn.functional as F
+import torch.optim as optim
 from einops import repeat
 from timm.layers import PatchEmbed
 from timm.models.layers import trunc_normal_
@@ -230,10 +233,12 @@ class MAE(nn.Module):
         img_channel: int,
         patch_size: int,
         mask_ratio: float,
+        lr: float = 1e-4,
         norm_pix_loss: bool = False,
         masked_loss: bool = False,
         enc_kwargs: dict = {},
         dec_kwargs: dict = {},
+        hidden_activation: Callable[[th.Tensor], th.Tensor] = F.tanh,
     ):
         super().__init__()
 
@@ -243,6 +248,17 @@ class MAE(nn.Module):
         self.mask_ratio = mask_ratio
         self.norm_pix_loss = norm_pix_loss
         self.masked_loss = masked_loss
+
+        self.hidden_activation = hidden_activation
+        self.optim = optim.Adam(self.parameters(), lr=lr)
+
+    def forward(self, x: th.Tensor, return_pred: bool = False) -> th.Tensor | Tuple[th.Tensor, th.Tensor]:
+        z, _, ids_restore = self.encoder.forward(x, self.mask_ratio, 1)
+        if return_pred:
+            y = self.decoder.forward(z, ids_restore)
+            return z, y
+        else:
+            return self.hidden_activation(z)
 
     def loss(self, x: th.Tensor) -> th.Tensor:
         z, mask, ids_restore = self.encoder.forward(x, self.mask_ratio, 1)
