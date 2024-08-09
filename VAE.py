@@ -1,4 +1,4 @@
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Union
 
 import torch as th
 import torch.nn as nn
@@ -84,7 +84,7 @@ class ConvVAE(FE):
         z = self._reparameterize(mu, log_var)
         return mu, log_var, z
 
-    def forward(self, x: th.Tensor, return_pred: bool = False) -> th.Tensor | Tuple[th.Tensor, th.Tensor]:
+    def forward(self, x: th.Tensor, return_pred: bool = False) -> Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]:
         _, _, z = self._bottleneck(x)
         if return_pred:
             y = self._decode(z)
@@ -335,7 +335,7 @@ class ResVAE(FE):
         z = self._sample(mu, log_var)
         return mu, log_var, z
 
-    def forward(self, x: th.Tensor, return_pred: bool = False) -> th.Tensor | Tuple[th.Tensor, th.Tensor]:
+    def forward(self, x: th.Tensor, return_pred: bool = False) -> Union[th.Tensor, Tuple[th.Tensor, th.Tensor]]:
         _, _, z = self._encode(x)
         if return_pred:
             y = self.decoder(z)
