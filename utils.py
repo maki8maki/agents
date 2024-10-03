@@ -9,6 +9,7 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as NF
 import torchvision.transforms.functional as TF
+from torch.optim import lr_scheduler
 
 
 def size_after_conv(h, ksize, stride=1, padding=0):
@@ -47,6 +48,34 @@ def discount_cumsum(x, discount):
 
 def torch_log(x: th.Tensor) -> th.Tensor:
     return th.log(th.clamp(x, min=1e-10))
+
+
+def get_scheduler(optimizer, lr_policy, policy_kwargs=None):
+    """Return a learning rate scheduler
+
+    Parameters:
+        optimizer -- the optimizer of the network
+        lr_policy -- the name of learning rate policy: linear | step | plateau | cosine
+
+    For 'linear', we keep the same learning rate for the first <n_epochs> epochs
+    and linearly decay the rate to zero over the next <n_epochs_decay> epochs.
+    For other schedulers (step, plateau, and cosine), we use the default PyTorch schedulers.
+    See https://pytorch.org/docs/stable/optim.html for more details.
+    """
+    if lr_policy == "linear":
+
+        def lambda_rule(epoch):
+            lr_l = 1.0 - max(0, epoch - policy_kwargs["n_epochs"]) / float(policy_kwargs["n_epochs_decay"] + 1)
+            return lr_l
+
+        scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda_rule)
+    elif lr_policy == "step":
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=policy_kwargs["lr_decay_iters"], gamma=0.1)
+    elif lr_policy == "cosine":
+        scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=policy_kwargs["n_epochs"], eta_min=0)
+    else:
+        return NotImplementedError("learning rate policy [%s] is not implemented", lr_policy)
+    return scheduler
 
 
 class SSIMLoss(nn.Module):
