@@ -6,7 +6,7 @@ import torch as th
 
 from .cyclegan.models.networks import GANLoss, define_D, define_G
 from .cyclegan.util.image_pool import ImagePool
-from .utils import get_scheduler
+from .utils import FE, get_scheduler
 
 
 # Reffered to https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/master/models/cycle_gan_model.py
@@ -28,8 +28,8 @@ class CycleGAN:
         lr: float = 0.0002,
         gan_mode: str = "lsgan",
         pool_size: int = 50,
-        lambda_A: float = 10,
-        lambda_B: float = 10,
+        lambda_A: float = 10.0,
+        lambda_B: float = 10.0,
         lambda_identity: float = 0.5,
         direction: str = "A2B",
         lr_policy: str = "linear",
@@ -166,6 +166,9 @@ class CycleGAN:
         fake_A = self.fake_A_pool.query(self.fake_A)
         self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
 
+    def additional_loss(self):
+        return 0
+
     def backward_G(self):
         lambda_idt = self.lambda_identity
         lambda_A = self.lambda_A
@@ -192,7 +195,13 @@ class CycleGAN:
         self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
         # combined loss and calculate gradients
         self.loss_G = (
-            self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
+            self.loss_G_A
+            + self.loss_G_B
+            + self.loss_cycle_A
+            + self.loss_cycle_B
+            + self.loss_idt_A
+            + self.loss_idt_B
+            + self.additional_loss()
         )
 
         self.loss_G.backward()
@@ -286,3 +295,83 @@ class CycleGAN:
 
     def __repr__(self) -> str:
         return self._get_name() + "()"
+
+
+class FeatureExtractionCycleGAN(CycleGAN):
+    def __init__(
+        self,
+        fe: FE,
+        lambda_fe: float = 0.1,
+        input_channel: int = 3,
+        output_channel: int = 3,
+        ndf: int = 64,
+        ngf: int = 64,
+        netD: str = "basic",
+        netG: str = "resnet_9blocks",
+        n_layers_D: int = 3,
+        norm: str = "instance",
+        no_dropout: bool = True,
+        init_type: str = "normal",
+        init_gain: float = 0.02,
+        beta1: float = 0.5,
+        lr: float = 0.0002,
+        gan_mode: str = "lsgan",
+        pool_size: int = 50,
+        lambda_A: float = 10,
+        lambda_B: float = 10,
+        lambda_identity: float = 0.5,
+        direction: str = "A2B",
+        lr_policy: str = "linear",
+        lr_decay_iters: int = 50,
+        is_train: bool = True,
+        device: str = "cpu",
+    ) -> None:
+        super().__init__(
+            input_channel,
+            output_channel,
+            ndf,
+            ngf,
+            netD,
+            netG,
+            n_layers_D,
+            norm,
+            no_dropout,
+            init_type,
+            init_gain,
+            beta1,
+            lr,
+            gan_mode,
+            pool_size,
+            lambda_A,
+            lambda_B,
+            lambda_identity,
+            direction,
+            lr_policy,
+            lr_decay_iters,
+            is_train,
+            device,
+        )
+
+        self.fe = fe
+        self.lambda_fe = lambda_fe
+
+        if is_train:
+            self.criterionFE = th.nn.MSELoss()
+
+    def additional_loss(self):
+        feature_real_A = self.fe.forward(self.real_A)
+        feature_fake_B = self.fe.forward(self.fake_B)
+        feature_rec_A = self.fe.forward(self.rec_A)
+        feature_real_B = self.fe.forward(self.real_B)
+        feature_fake_A = self.fe.forward(self.fake_A)
+        feature_rec_B = self.fe.forward(self.rec_B)
+
+        loss = (
+            self.criterionFE(feature_real_A, feature_fake_B)
+            + 0.5 * self.criterionFE(feature_real_A, feature_rec_A)
+            + 0.5 * self.criterionFE(feature_fake_B, feature_rec_A)
+            + self.criterionFE(feature_real_B, feature_fake_A)
+            + 0.5 * self.criterionFE(feature_real_B, feature_rec_B)
+            + 0.5 * self.criterionFE(feature_fake_A, feature_rec_B)
+        )
+        return loss * self.lambda_fe
