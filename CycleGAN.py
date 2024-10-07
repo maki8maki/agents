@@ -1,5 +1,4 @@
 import itertools
-import os
 from typing import Dict, List, Optional
 
 import torch as th
@@ -43,7 +42,7 @@ class CycleGAN:
         self.direction = direction
         self.device = device
 
-        self.loss_names = ["D_A", "G_A", "cycle_A", "idt_A", "D_B", "G_B", "cycle_B", "idt_B"]
+        self.loss_names = ["D_A", "G_A", "cycle_A", "idt_A", "D_B", "G_B", "cycle_B", "idt_B", "G"]
 
         visual_names_A = ["real_A", "fake_B", "rec_A"]
         visual_names_B = ["real_B", "fake_A", "rec_B"]
@@ -58,50 +57,45 @@ class CycleGAN:
         else:
             self.model_names = ["G_A", "G_B"]
 
-        gpu_ids = "0" if device == "cuda" else "-1"
-        self.netG_A: th.nn.Module = define_G(
+        self.netG_A = define_G(
             input_nc=input_channel,
             output_nc=output_channel,
             ngf=ngf,
             netG=netG,
             norm=norm,
-            no_dropout=not no_dropout,
+            use_dropout=not no_dropout,
             init_type=init_type,
             init_gain=init_gain,
-            gpu_ids=gpu_ids,
         )
-        self.netG_B: th.nn.Module = define_G(
+        self.netG_B = define_G(
             input_nc=input_channel,
             output_nc=output_channel,
             ngf=ngf,
             netG=netG,
             norm=norm,
-            no_dropout=not no_dropout,
+            use_dropout=not no_dropout,
             init_type=init_type,
             init_gain=init_gain,
-            gpu_ids=gpu_ids,
         )
 
         if is_train:
-            self.netD_A: th.nn.Module = define_D(
-                output_nc=output_channel,
+            self.netD_A = define_D(
+                input_nc=output_channel,
                 ndf=ndf,
                 netD=netD,
                 n_layers_D=n_layers_D,
                 norm=norm,
                 init_type=init_type,
                 init_gain=init_gain,
-                gpu_ids=gpu_ids,
             )
-            self.netD_B: th.nn.Module = define_D(
-                output_nc=output_channel,
+            self.netD_B = define_D(
+                input_nc=output_channel,
                 ndf=ndf,
                 netD=netD,
                 n_layers_D=n_layers_D,
                 norm=norm,
                 init_type=init_type,
                 init_gain=init_gain,
-                gpu_ids=gpu_ids,
             )
 
             self.fake_A_pool = ImagePool(pool_size)
@@ -146,7 +140,7 @@ class CycleGAN:
         self.fake_A = self.netG_B(self.real_A)
         self.rec_B = self.netG_A(self.fake_A)
 
-    def backward_D_basic(self, netD: th.nn.Module, real: th.Tensor, fake: th.Tensor) -> th.Tensor:
+    def calcurate_loss_D_basic(self, netD: th.nn.Module, real: th.Tensor, fake: th.Tensor) -> th.Tensor:
         pred_real = netD(real)
         loss_D_real = self.criterionGAN(pred_real, True)
 
@@ -154,22 +148,30 @@ class CycleGAN:
         loss_D_fake = self.criterionGAN(pred_fake, False)
 
         loss_D = (loss_D_real + loss_D_fake) * 0.5
-        loss_D.backward()
 
         return loss_D
 
+    def calcurate_loss_D_A(self, fake_B=None):
+        if fake_B is None:
+            fake_B = self.fake_B
+        self.loss_D_A = self.calcurate_loss_D_basic(self.netD_A, self.real_B, fake_B)
+
+    def calcurate_loss_D_B(self, fake_A=None):
+        if fake_A is None:
+            fake_A = self.fake_A
+        self.loss_D_B = self.calcurate_loss_D_basic(self.netD_B, self.real_A, fake_A)
+
     def backward_D_A(self):
         fake_B = self.fake_B_pool.query(self.fake_B)
-        self.loss_D_A = self.backward_D_basic(self.netD_A, self.real_B, fake_B)
+        self.calcurate_loss_D_A(fake_B)
+        self.loss_D_A.backward()
 
     def backward_D_B(self):
         fake_A = self.fake_A_pool.query(self.fake_A)
-        self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_A, fake_A)
+        self.calcurate_loss_D_B(fake_A)
+        self.loss_D_B.backward()
 
-    def additional_loss(self):
-        return 0
-
-    def backward_G(self):
+    def calcurate_loss_G(self):
         lambda_idt = self.lambda_identity
         lambda_A = self.lambda_A
         lambda_B = self.lambda_B
@@ -177,10 +179,10 @@ class CycleGAN:
         if lambda_idt > 0:
             # G_A should be identity if real_B is fed: ||G_A(B) - B||
             self.idt_A = self.netG_A(self.real_B)
-            self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B) * lambda_B * lambda_idt
+            self.loss_idt_A = self.criterionIdt(self.idt_A, self.real_B)
             # G_B should be identity if real_A is fed: ||G_B(A) - A||
             self.idt_B = self.netG_B(self.real_A)
-            self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A) * lambda_A * lambda_idt
+            self.loss_idt_B = self.criterionIdt(self.idt_B, self.real_A)
         else:
             self.loss_idt_A = 0
             self.loss_idt_B = 0
@@ -190,20 +192,24 @@ class CycleGAN:
         # GAN loss D_B(G_B(B))
         self.loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
         # Forward cycle loss || G_B(G_A(A)) - A||
-        self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
+        self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A)
         # Backward cycle loss || G_A(G_B(B)) - B||
-        self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
+        self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B)
+
         # combined loss and calculate gradients
-        self.loss_G = (
+        loss_G = (
             self.loss_G_A
             + self.loss_G_B
-            + self.loss_cycle_A
-            + self.loss_cycle_B
-            + self.loss_idt_A
-            + self.loss_idt_B
-            + self.additional_loss()
+            + self.loss_cycle_A * lambda_A
+            + self.loss_cycle_B * lambda_B
+            + self.loss_idt_A * lambda_B * lambda_idt
+            + self.loss_idt_B * lambda_A * lambda_idt
         )
 
+        self.loss_G = loss_G
+
+    def backward_G(self):
+        self.calcurate_loss_G()
         self.loss_G.backward()
 
     def optimize_parameters(self):
@@ -231,6 +237,20 @@ class CycleGAN:
         for scheduler in self.schedulers:
             scheduler.step()
 
+    def get_current_losses(self):
+        errors_ret = {}
+        for name in self.loss_names:
+            if isinstance(name, str):
+                errors_ret[name] = float(getattr(self, "loss_" + name))
+        return errors_ret
+
+    def get_current_visuals(self):
+        visual_ret = {}
+        for name in self.visual_names:
+            if isinstance(name, str):
+                visual_ret[name] = getattr(self, name)
+        return visual_ret
+
     def eval(self):
         for name in self.model_names:
             if isinstance(name, str):
@@ -243,14 +263,16 @@ class CycleGAN:
                 net: th.nn.Module = getattr(self, "net" + name)
                 net.train()
 
-    def save(self, path):
+    def state_dict(self):
+        state_dict = {}
         for name in self.model_names:
             if isinstance(name, str):
-                save_filename = f"{name}.pth"
-                save_path = os.path.join(path, save_filename)
                 net: th.nn.Module = getattr(self, "net" + name)
+                state_dict[name] = net.state_dict()
+        return state_dict
 
-                th.save(net.cpu().state_dict(), save_path)
+    def save(self, path):
+        th.save(self.state_dict, path)
 
     def __patch_instance_norm_state_dict(self, state_dict: dict, module: th.nn.Module, keys, i=0):
         key = keys[i]
@@ -266,14 +288,13 @@ class CycleGAN:
             self.__patch_instance_norm_state_dict(state_dict, getattr(module, key), keys, i + 1)
 
     def load(self, path):
+        total_state_dict = th.load(path, map_location=self.device)
         for name in self.model_names:
             if isinstance(name, str):
-                load_filename = f"{name}.pth"
-                load_path = os.path.join(path, load_filename)
+                state_dict: dict = total_state_dict[name]
                 net: th.nn.Module = getattr(self, "net" + name)
                 if isinstance(net, th.nn.DataParallel):
                     net = net.module
-                state_dict: dict = th.load(load_path, map_location=self.device)
                 if hasattr(state_dict, "_metadata"):
                     del state_dict._metadata
 
@@ -283,10 +304,10 @@ class CycleGAN:
                 net.load_state_dict(state_dict)
 
     def to(self, device):
+        self.device = device
         for name in self.model_names:
             if isinstance(name, str):
-                net: th.nn.Module = getattr(self, "net" + name)
-
+                net = getattr(self, "net" + name)
                 net.to(device)
         self.criterionGAN.to(device)
 
@@ -353,12 +374,15 @@ class FeatureExtractionCycleGAN(CycleGAN):
         )
 
         self.fe = fe
+        self.fe.eval()
+        self.fe.to(device)
         self.lambda_fe = lambda_fe
+        self.loss_names.append("FEC")
 
         if is_train:
             self.criterionFE = th.nn.MSELoss()
 
-    def additional_loss(self):
+    def calcurate_fec_loss(self):
         feature_real_A = self.fe.forward(self.real_A)
         feature_fake_B = self.fe.forward(self.fake_B)
         feature_rec_A = self.fe.forward(self.rec_A)
@@ -366,12 +390,24 @@ class FeatureExtractionCycleGAN(CycleGAN):
         feature_fake_A = self.fe.forward(self.fake_A)
         feature_rec_B = self.fe.forward(self.rec_B)
 
-        loss = (
+        self.loss_FEC = (
             self.criterionFE(feature_real_A, feature_fake_B)
-            + 0.5 * self.criterionFE(feature_real_A, feature_rec_A)
-            + 0.5 * self.criterionFE(feature_fake_B, feature_rec_A)
+            + self.criterionFE(feature_real_A, feature_rec_A)
+            + self.criterionFE(feature_fake_B, feature_rec_A)
             + self.criterionFE(feature_real_B, feature_fake_A)
-            + 0.5 * self.criterionFE(feature_real_B, feature_rec_B)
-            + 0.5 * self.criterionFE(feature_fake_A, feature_rec_B)
+            + self.criterionFE(feature_real_B, feature_rec_B)
+            + self.criterionFE(feature_fake_A, feature_rec_B)
         )
-        return loss * self.lambda_fe
+
+    def calcurate_loss_G(self):
+        super().calcurate_loss_G()
+        self.calcurate_fec_loss()
+        self.loss_G += self.loss_FEC * self.lambda_fe
+
+    def backward_G(self):
+        self.calcurate_loss_G()
+        self.loss_G.backward()
+
+    def to(self, device):
+        super().to(device)
+        self.fe.to(device)
