@@ -137,7 +137,7 @@ class CycleGAN:
     def forward(self):
         self.fake_B = self.netG_A(self.real_A)
         self.rec_A = self.netG_B(self.fake_B)
-        self.fake_A = self.netG_B(self.real_A)
+        self.fake_A = self.netG_B(self.real_B)
         self.rec_B = self.netG_A(self.fake_A)
 
     def calcurate_loss_D_basic(self, netD: th.nn.Module, real: th.Tensor, fake: th.Tensor) -> th.Tensor:
