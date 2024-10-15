@@ -237,14 +237,14 @@ class CycleGAN:
         for scheduler in self.schedulers:
             scheduler.step()
 
-    def get_current_losses(self):
+    def get_current_losses(self) -> Dict[str, float]:
         errors_ret = {}
         for name in self.loss_names:
             if isinstance(name, str):
                 errors_ret[name] = float(getattr(self, "loss_" + name))
         return errors_ret
 
-    def get_current_visuals(self):
+    def get_current_visuals(self) -> Dict[str, th.Tensor]:
         visual_ret = {}
         for name in self.visual_names:
             if isinstance(name, str):
