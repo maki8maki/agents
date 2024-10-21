@@ -52,7 +52,7 @@ class ConvVAE(FE):
             nn.ConvTranspose2d(64, 32, kernel_size=6, stride=2),
             nn.ReLU(),
             nn.ConvTranspose2d(32, img_channel, kernel_size=6, stride=2),
-            nn.Sigmoid(),
+            nn.Tanh(),
         )
 
         self.hidden_activation = hidden_activation

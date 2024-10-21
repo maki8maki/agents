@@ -75,7 +75,7 @@ class DCAE(FE):
             net_activation,
             nn.Upsample(scale_factor=pooling_size),
             nn.ConvTranspose2d(in_channels=channels[1], out_channels=channels[0], kernel_size=ksize),
-            nn.Sigmoid(),
+            nn.Tanh(),
             nn.Upsample(size=(img_height, img_width)),
         )
         self.net_activation = net_activation
