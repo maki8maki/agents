@@ -41,6 +41,7 @@ class CycleGAN:
         self.lambda_identity = lambda_identity
         self.direction = direction
         self.device = device
+        self.is_train = is_train
 
         self.loss_names = ["D_A", "G_A", "cycle_A", "idt_A", "D_B", "G_B", "cycle_B", "idt_B", "G"]
 
@@ -373,13 +374,13 @@ class FeatureExtractionCycleGAN(CycleGAN):
             device,
         )
 
-        self.fe = fe
-        self.fe.eval()
-        self.fe.to(device)
         self.lambda_fe = lambda_fe
         self.loss_names.append("FEC")
 
         if is_train:
+            self.fe = fe
+            self.fe.eval()
+            self.fe.to(device)
             self.criterionFE = th.nn.MSELoss()
 
     def calcurate_fec_loss(self):
@@ -410,4 +411,5 @@ class FeatureExtractionCycleGAN(CycleGAN):
 
     def to(self, device):
         super().to(device)
-        self.fe.to(device)
+        if self.is_train:
+            self.fe.to(device)
