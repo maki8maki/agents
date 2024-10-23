@@ -103,8 +103,8 @@ class CycleGAN:
             self.fake_B_pool = ImagePool(pool_size)
 
             self.criterionGAN = GANLoss(gan_mode).to(self.device)  # define GAN loss.
-            self.criterionCycle = th.nn.L1Loss()
-            self.criterionIdt = th.nn.L1Loss()
+            self.criterionCycle = th.nn.MSELoss()
+            self.criterionIdt = th.nn.MSELoss()
 
             self.optimizers = []
             self.optimizer_G = th.optim.Adam(
