@@ -310,7 +310,8 @@ class CycleGAN:
             if isinstance(name, str):
                 net = getattr(self, "net" + name)
                 net.to(device)
-        self.criterionGAN.to(device)
+        if self.is_train:
+            self.criterionGAN.to(device)
 
     def _get_name(self):
         return self.__class__.__name__
@@ -322,7 +323,7 @@ class CycleGAN:
 class FeatureExtractionCycleGAN(CycleGAN):
     def __init__(
         self,
-        fe: FE,
+        fe: FE = None,
         lambda_fe: float = 0.1,
         input_channel: int = 3,
         output_channel: int = 3,
