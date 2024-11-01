@@ -324,7 +324,7 @@ class FeatureExtractionCycleGAN(CycleGAN):
     def __init__(
         self,
         fe: FE = None,
-        lambda_fe: float = 0.1,
+        lambda_fe: float = 1.0,
         input_channel: int = 3,
         output_channel: int = 3,
         ndf: int = 64,
