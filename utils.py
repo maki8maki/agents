@@ -207,6 +207,7 @@ class RL:
 class FE(nn.Module):
     optim: th.optim.Optimizer
     hidden_dim: int
+    loss_names: list
 
     def __init__(self):
         super().__init__()
@@ -220,6 +221,13 @@ class FE(nn.Module):
 
     def loss(self, x: th.Tensor) -> th.Tensor:
         raise NotImplementedError()
+
+    def get_current_losses(self) -> Dict[str, float]:
+        errors_ret = {}
+        for name in self.loss_names:
+            if isinstance(name, str):
+                errors_ret[name] = float(getattr(self, "loss_" + name))
+        return errors_ret
 
     def __repr__(self):
         return self._get_name() + "()"

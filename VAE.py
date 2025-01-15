@@ -62,6 +62,8 @@ class ConvVAE(FE):
 
         self.hidden_dim = hidden_dim
 
+        self.loss_names = ["KL", "RE", "loss"]
+
     def _encode(self, input: th.Tensor) -> Tuple[th.Tensor, th.Tensor]:
         tmp = self.encoder(input)
         mu = self.enc_mean(tmp)
@@ -97,7 +99,10 @@ class ConvVAE(FE):
         kl = -0.5 * th.sum(1 + log_var - mu.pow(2) - log_var.exp_())
         y = self._decode(z)
         re = self.re_loss(y, x) * x.numel()
-        return kl + re
+        self.loss_KL = kl
+        self.loss_RE = re
+        self.loss_loss = kl + re
+        return self.loss_loss
 
 
 # 以下は https://github.com/LukeDitria/CNN-VAE を利用
